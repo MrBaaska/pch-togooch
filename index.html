@@ -76,8 +76,15 @@
                 <!-- Захиалгын хүснэгт -->
                 <div class="glass text-slate-800 p-6 rounded-2xl shadow-2xl">
                     <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-lg font-semibold flex items-center gap-2"><span>📋</span> Өнөөдрийн Захиалгууд</h2>
+                        <h2 id="ordersHeading" class="text-lg font-semibold flex items-center gap-2"><span>📋</span> Захиалгууд</h2>
                         <span id="totalCount" class="bg-indigo-100 text-indigo-800 text-xs font-bold px-3 py-1 rounded-full">Нийт: 0 порц</span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2 mb-4">
+                        <label for="ordersDate" class="text-sm font-medium text-slate-600">Өдрөөр харах:</label>
+                        <button type="button" id="previousOrdersDate" aria-label="Өмнөх өдөр" class="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-100">←</button>
+                        <input type="date" id="ordersDate" class="px-3 py-2 rounded-lg border border-slate-200 bg-white">
+                        <button type="button" id="nextOrdersDate" aria-label="Дараах өдөр" class="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-100">→</button>
+                        <button type="button" id="todayOrdersDate" class="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-100 text-sm">Өнөөдөр</button>
                     </div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-left text-sm">
@@ -113,8 +120,16 @@
         const MENU_IMAGE_BUCKET = 'menu-images';
         const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+        function getLocalDateString(date = new Date()) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
         // Өнөөдрийн огноог автоматаар оруулах
-        document.getElementById('menuDate').value = new Date().toISOString().split('T')[0];
+        document.getElementById('menuDate').value = getLocalDateString();
+        document.getElementById('ordersDate').value = getLocalDateString();
 
         const menuImageFileInput = document.getElementById('menuImageFile');
         const menuImagePreview = document.getElementById('menuImagePreview');
@@ -188,7 +203,7 @@
             } else {
                 alert('Хоол амжилттай бүртгэгдлээ!');
                 document.getElementById('menuForm').reset();
-                document.getElementById('menuDate').value = new Date().toISOString().split('T')[0];
+                document.getElementById('menuDate').value = getLocalDateString();
                 if (previewObjectUrl) {
                     URL.revokeObjectURL(previewObjectUrl);
                     previewObjectUrl = undefined;
@@ -201,14 +216,22 @@
         // Захиалга татаж харуулах (Салбараар шүүх боломжтой)
         async function loadOrders() {
             const selectedDept = document.getElementById('filterDept').value;
+            const ordersDateInput = document.getElementById('ordersDate');
+            const selectedDate = ordersDateInput.value || getLocalDateString();
+            ordersDateInput.value = selectedDate;
+            const ordersHeading = document.getElementById('ordersHeading');
+            const displayDate = new Date(`${selectedDate}T00:00:00`).toLocaleDateString('mn-MN');
+            ordersHeading.innerHTML = `<span>📋</span> ${displayDate} захиалгууд`;
             
             let query = _supabase.from('orders').select(`
                 id,
                 department,
                 employee_name,
                 quantity,
-                menu_items ( title )
+                menu_items!inner ( title, date )
             `);
+
+            query = query.eq('menu_items.date', selectedDate);
 
             if (selectedDept) {
                 query = query.eq('department', selectedDept);
@@ -247,6 +270,24 @@
 
             totalCountEl.textContent = `Нийт: ${totalPortions} порц`;
         }
+
+        document.getElementById('ordersDate').addEventListener('change', loadOrders);
+        document.getElementById('previousOrdersDate').addEventListener('click', () => {
+            const date = new Date(`${document.getElementById('ordersDate').value}T00:00:00`);
+            date.setDate(date.getDate() - 1);
+            document.getElementById('ordersDate').value = getLocalDateString(date);
+            loadOrders();
+        });
+        document.getElementById('nextOrdersDate').addEventListener('click', () => {
+            const date = new Date(`${document.getElementById('ordersDate').value}T00:00:00`);
+            date.setDate(date.getDate() + 1);
+            document.getElementById('ordersDate').value = getLocalDateString(date);
+            loadOrders();
+        });
+        document.getElementById('todayOrdersDate').addEventListener('click', () => {
+            document.getElementById('ordersDate').value = getLocalDateString();
+            loadOrders();
+        });
 
         // Сэтгэгдэл татах
         async function loadFeedbacks() {
