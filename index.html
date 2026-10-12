@@ -73,6 +73,22 @@
 
             <!-- Баруун тал: Захиалгын жагсаалт болон тоон үзүүлэлт -->
             <div class="lg:col-span-2 space-y-8">
+                <section class="glass text-slate-800 p-6 rounded-2xl shadow-2xl" aria-labelledby="menuGalleryHeading">
+                    <h2 id="menuGalleryHeading" class="text-lg font-semibold mb-4">Оруулсан хоолны зургууд</h2>
+                    
+                    <div class="flex flex-wrap items-center gap-2 mb-4">
+                        <label for="menuGalleryDate" class="text-sm font-medium text-slate-600">Өмнөх өдөр:</label>
+                        <button type="button" id="previousMenuGalleryDate" aria-label="Өмнөх өдрийн хоолны зураг" class="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-100">←</button>
+                        <input type="date" id="menuGalleryDate" class="px-3 py-2 rounded-lg border border-slate-200 bg-white">
+                        <button type="button" id="nextMenuGalleryDate" aria-label="Дараах өдрийн хоолны зураг" class="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-100">→</button>
+                        <button type="button" id="todayMenuGalleryDate" class="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-100 text-sm">Өнөөдөр</button>
+                        <button type="button" id="refreshMenuGallery" class="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-100 text-sm">Шинэчлэх</button>
+                    </div>
+                    <div id="menuGalleryContainer" class="grid grid-cols-1 sm:grid-cols-2 gap-4" aria-live="polite">
+                        <p class="text-sm text-slate-500 sm:col-span-2">Хоолны зургуудыг ачаалж байна...</p>
+                    </div>
+                </section>
+
                 <!-- Захиалгын хүснэгт -->
                 <div class="glass text-slate-800 p-6 rounded-2xl shadow-2xl">
                     <div class="flex justify-between items-center mb-4">
@@ -130,6 +146,99 @@
         // Өнөөдрийн огноог автоматаар оруулах
         document.getElementById('menuDate').value = getLocalDateString();
         document.getElementById('ordersDate').value = getLocalDateString();
+
+        const menuGalleryDateInput = document.getElementById('menuGalleryDate');
+        menuGalleryDateInput.value = getLocalDateString();
+        let menuGalleryRequestId = 0;
+
+        async function loadMenuGallery() {
+            const requestId = ++menuGalleryRequestId;
+            const container = document.getElementById('menuGalleryContainer');
+            const date = menuGalleryDateInput.value;
+            const showMessage = (text, isError = false) => {
+                const message = document.createElement('p');
+                message.className = `text-sm sm:col-span-2 ${isError ? 'text-red-600' : 'text-slate-500'}`;
+                message.textContent = text;
+                container.replaceChildren(message);
+            };
+
+            if (!date) {
+                showMessage('Хоолны өдрөө сонгоно уу.');
+                return;
+            }
+            showMessage('Хоолны зургуудыг ачаалж байна...');
+
+            try {
+                const { data, error } = await _supabase
+                    .from('menu_items')
+                    .select('id, title, description, image_url')
+                    .eq('date', date)
+                    .order('title');
+                if (requestId !== menuGalleryRequestId) return;
+                if (error) throw error;
+                if (!data || data.length === 0) {
+                    showMessage('Энэ өдөр хоолны цэс оруулаагүй байна.');
+                    return;
+                }
+
+                const cards = data.map(meal => {
+                    const card = document.createElement('article');
+                    card.className = 'border border-slate-200 rounded-xl p-3 bg-white/60';
+                    const imageStatus = document.createElement('p');
+                    imageStatus.className = 'text-sm text-slate-500 py-4';
+                    if (meal.image_url) {
+                        const link = document.createElement('a');
+                        link.href = meal.image_url;
+                        link.target = '_blank';
+                        link.rel = 'noopener noreferrer';
+                        link.setAttribute('aria-label', `${meal.title} зургийг томоор нээх`);
+                        const image = document.createElement('img');
+                        image.src = meal.image_url;
+                        image.alt = meal.title;
+                        image.loading = 'lazy';
+                        image.className = 'w-full h-48 object-contain rounded-lg bg-slate-100 mb-3';
+                        image.addEventListener('error', () => {
+                            console.error('Хоолны зураг ачаалж чадсангүй:', meal.id);
+                            imageStatus.textContent = 'Зураг ачаалж чадсангүй.';
+                            link.replaceWith(imageStatus);
+                        }, { once: true });
+                        link.appendChild(image);
+                        card.appendChild(link);
+                    } else {
+                        imageStatus.textContent = 'Зураг оруулаагүй байна.';
+                        card.appendChild(imageStatus);
+                    }
+                    const title = document.createElement('h3');
+                    title.className = 'font-semibold text-slate-800';
+                    title.textContent = meal.title;
+                    const description = document.createElement('p');
+                    description.className = 'text-sm text-slate-500 mt-1';
+                    description.textContent = meal.description || '';
+                    card.append(title, description);
+                    return card;
+                });
+                container.replaceChildren(...cards);
+            } catch (error) {
+                if (requestId !== menuGalleryRequestId) return;
+                console.error('Хоолны цэс татахад алдаа гарлаа:', error);
+                showMessage('Хоолны зургуудыг ачаалж чадсангүй: ' + error.message, true);
+            }
+        }
+
+        menuGalleryDateInput.addEventListener('change', loadMenuGallery);
+        document.getElementById('refreshMenuGallery').addEventListener('click', loadMenuGallery);
+        function changeMenuGalleryDate(days) {
+            const date = new Date(`${menuGalleryDateInput.value || getLocalDateString()}T12:00:00`);
+            date.setDate(date.getDate() + days);
+            menuGalleryDateInput.value = getLocalDateString(date);
+            loadMenuGallery();
+        }
+        document.getElementById('previousMenuGalleryDate').addEventListener('click', () => changeMenuGalleryDate(-1));
+        document.getElementById('nextMenuGalleryDate').addEventListener('click', () => changeMenuGalleryDate(1));
+        document.getElementById('todayMenuGalleryDate').addEventListener('click', () => {
+            menuGalleryDateInput.value = getLocalDateString();
+            loadMenuGallery();
+        });
 
         const menuImageFileInput = document.getElementById('menuImageFile');
         const menuImagePreview = document.getElementById('menuImagePreview');
@@ -210,6 +319,8 @@
                 }
                 menuImagePreview.classList.add('hidden');
                 menuImagePreview.removeAttribute('src');
+                menuGalleryDateInput.value = date;
+                await loadMenuGallery();
             }
         });
 
@@ -319,6 +430,7 @@
 
         loadOrders();
         loadFeedbacks();
+        loadMenuGallery();
     </script>
 </body>
 </html>
